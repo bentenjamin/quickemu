@@ -1,82 +1,80 @@
-{ lib
-, fetchFromGitHub
-, installShellFiles
-, makeWrapper
-, stdenv
-, testers
-, cdrtools
-, curl
-, gawk
-, glxinfo
-, gnugrep
-, gnused
-, jq
-, pciutils
-, procps
-, python3
-, qemu_full
-, samba
-, socat
-, spice-gtk
-, swtpm
-, unzip
-, usbutils
-, util-linux
-, xdg-user-dirs
-, xrandr
-, zsync
-, OVMF
-, OVMFFull
-, quickemu
+{
+  cdrtools,
+  curl,
+  fetchFromGitHub,
+  gawk,
+  gitUpdater,
+  gnugrep,
+  gnused,
+  installShellFiles,
+  jq,
+  lib,
+  makeWrapper,
+  mesa-demos,
+  OVMF,
+  OVMFFull,
+  pciutils,
+  procps,
+  python3,
+  qemu,
+  socat,
+  spice-gtk,
+  stdenv,
+  swtpm,
+  testers,
+  unzip,
+  usbutils,
+  util-linux,
+  xdg-user-dirs,
+  xrandr,
+  zsync,
 }:
 let
-  runtimePaths = [
-    cdrtools
-    curl
-    gawk
-    gnugrep
-    gnused
-    jq
-    pciutils
-    procps
-    python3
-    qemu_full
-    samba
-    socat
-    swtpm
-    unzip
-    util-linux
-    xrandr
-    zsync
-    OVMF
-    OVMFFull
-  ] ++ lib.optionals stdenv.isLinux [
-    glxinfo
-    usbutils
-    xdg-user-dirs
-  ];
-  versionMatches =
-    builtins.match ''
-      .*
-      readonly[[:blank:]]VERSION="([[:digit:]]+\.[[:digit:]]+\.[[:digit:]]+)"
-      .*
-    '' (builtins.readFile ./quickemu);
+  runtimePaths =
+    [
+      cdrtools
+      curl
+      gawk
+      gnugrep
+      gnused
+      jq
+      pciutils
+      procps
+      python3
+      (qemu.override { smbdSupport = true; })
+      socat
+      swtpm
+      unzip
+      util-linux
+      xrandr
+      zsync
+    ]
+    ++ lib.optionals stdenv.hostPlatform.isLinux [
+      mesa-demos
+      usbutils
+      xdg-user-dirs
+    ];
 in
-stdenv.mkDerivation rec {
+
+stdenv.mkDerivation (finalAttrs: {
   pname = "quickemu";
-  version = builtins.concatStringsSep "" versionMatches;
   src = lib.cleanSource ./.;
+  version = "5.0.0";
 
   postPatch = ''
     sed -i \
       -e '/OVMF_CODE_4M.secboot.fd/s|ovmfs=(|ovmfs=("${OVMFFull.firmware}","${OVMFFull.variables}" |' \
       -e '/OVMF_CODE_4M.fd/s|ovmfs=(|ovmfs=("${OVMF.firmware}","${OVMF.variables}" |' \
       -e '/cp "''${VARS_IN}" "''${VARS_OUT}"/a chmod +w "''${VARS_OUT}"' \
-      -e 's,\$(command -v smbd),${samba}/bin/smbd,' \
+      -e 's/Icon=.*qemu.svg/Icon=qemu/' \
+      -e 's,\[ -x "\$(command -v smbd)" \],true,' \
       quickemu
   '';
 
-  nativeBuildInputs = [ makeWrapper installShellFiles ];
+  nativeBuildInputs = [
+    makeWrapper
+    installShellFiles
+  ];
 
   installPhase = ''
     runHook preInstall
@@ -95,13 +93,20 @@ stdenv.mkDerivation rec {
     runHook postInstall
   '';
 
-  passthru.tests = testers.testVersion { package = quickemu; };
+  passthru = {
+    tests = testers.testVersion { package = finalAttrs.finalPackage; };
+    updateScript = gitUpdater { };
+  };
 
   meta = {
     description = "Quickly create and run optimised Windows, macOS and Linux virtual machines";
     homepage = "https://github.com/quickemu-project/quickemu";
+    changelog = "https://github.com/quickemu-project/quickemu/releases/tag/${finalAttrs.version}";
     mainProgram = "quickemu";
     license = lib.licenses.mit;
-    maintainers = with lib.maintainers; [ fedx-sudo flexiondotorg ];
+    maintainers = with lib.maintainers; [
+      bentenjamin
+      
+    ];
   };
-}
+})
